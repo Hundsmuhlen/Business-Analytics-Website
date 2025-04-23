@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zürich Parking Garages</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        .sort-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button.active {
+            background-color: #2c3e50;
+        }
+        .loading {
+            text-align: center;
+            font-style: italic;
+            color: #7f8c8d;
+        }
+        .refresh-info {
+            text-align: right;
+            font-size: 0.9em;
+            color: #7f8c8d;
+            margin-bottom: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th {
+            background-color: #3498db;
+            color: white;
+            padding: 12px;
+            text-align: left;
+        }
+        td {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        .spots-high {
+            color: #27ae60;
+            font-weight: bold;
+        }
+        .spots-medium {
+            color: #f39c12;
+        }
+        .spots-low {
+            color: #e74c3c;
+        }
+        .error {
+            color: #e74c3c;
+            text-align: center;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Zürich Parking Garages</h1>
+        <div id="weather-container" class="weather-info" style="text-align: center; font-size: 1.2em; margin: 15px 0;">
+            <h3>Current Weather in Zürich</h3>
+            <div id="loading-weather" class="loading">Loading weather...</div>
+            <div id="weather-data" style="display: none;">
+            <span id="weather-temp"></span>°C | 
+            <span id="weather-type"></span> | 
+            <span id="weather-time"></span>
+            </div>
+        </div>
+        
+        <script>
+            // Function to fetch weather data
+            async function fetchWeatherData() {
+            const loadingElement = document.getElementById('loading-weather');
+            const weatherDataElement = document.getElementById('weather-data');
+            
+            try {
+                const response = await fetch('http://localhost:8000/api/weather');
+                
+                if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                
+                const weatherData = await response.json();
+                
+                // Update the weather information
+                document.getElementById('weather-temp').textContent = weatherData.temperature;
+                document.getElementById('weather-type').textContent = weatherData.weather_type;
+                document.getElementById('weather-time').textContent = ` (${new Date(weatherData.time).toLocaleTimeString()})`;
+                
+                // Hide loading, show data
+                loadingElement.style.display = 'none';
+                weatherDataElement.style.display = 'block';
+            } catch (error) {
+                console.error('Error fetching weather data:', error);
+                loadingElement.textContent = 'Weather data unavailable';
+            }
+            }
+            
+            // Fetch weather data on page load
+            document.addEventListener('DOMContentLoaded', fetchWeatherData);
+            
+            // Update weather every 30 minutes
+            setInterval(fetchWeatherData, 30 * 60 * 1000);
+        </script>
+        <div class="controls">
+            <div class="sort-buttons">
+                <button id="sort-name" onclick="sortData('name')">Sort by Name</button>
+                <button id="sort-spots" onclick="sortData('available_spots')">Sort by Available Spots</button>
+            </div>
+            <button id="refresh-btn" onclick="fetchData()">Refresh Data</button>
+        </div>
+        
+        <div id="refresh-time" class="refresh-info"></div>
+        
+        <div id="loading" class="loading">Loading parking data...</div>
+        <div id="error" class="error" style="display: none;"></div>
+        
+        <table id="parking-table" style="display: none;">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Available Spots</th>
+                    <th>Last Updated</th>
+                </tr>
+            </thead>
+            <tbody id="parking-data">
+                <!-- Data will be inserted here -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // Variables to track sorting state
+        let currentSortField = 'name';
+        let currentSortOrder = 'asc';
+        let lastData = [];
+
+        // Function to fetch data from the API
+        async function fetchData() {
+            const loadingElement = document.getElementById('loading');
+            const errorElement = document.getElementById('error');
+            const tableElement = document.getElementById('parking-table');
+            
+            loadingElement.style.display = 'block';
+            errorElement.style.display = 'none';
+            tableElement.style.display = 'none';
+            
+            try {
+                const url = `http://localhost:8000/api/parking?sort_by=${currentSortField}&sort_order=${currentSortOrder}`;
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                
+                lastData = await response.json();
+                displayData(lastData);
+                
+                // Update refresh time
+                const now = new Date();
+                document.getElementById('refresh-time').textContent = `Last refreshed: ${now.toLocaleTimeString()}`;
+                
+                loadingElement.style.display = 'none';
+                tableElement.style.display = 'table';
+            } catch (error) {
+                loadingElement.style.display = 'none';
+                errorElement.textContent = `Error loading data: ${error.message}`;
+                errorElement.style.display = 'block';
+                console.error('Error fetching data:', error);
+            }
+        }
+
+        // Function to display data in the table
+        function displayData(data) {
+            const tableBody = document.getElementById('parking-data');
+            tableBody.innerHTML = '';
+            
+            data.forEach(garage => {
+                const row = document.createElement('tr');
+                
+                // Determine class for available spots
+                let spotsClass = '';
+                if (garage.available_spots > 100) {
+                    spotsClass = 'spots-high';
+                } else if (garage.available_spots > 30) {
+                    spotsClass = 'spots-medium';
+                } else {
+                    spotsClass = 'spots-low';
+                }
+                
+                // Format the update time
+                const updateTime = new Date(garage.update_time);
+                const formattedTime = updateTime.toLocaleString();
+                
+                row.innerHTML = `
+                    <td>${garage.name}</td>
+                    <td class="${spotsClass}">${garage.available_spots}</td>
+                    <td>${formattedTime}</td>
+                `;
+                
+                tableBody.appendChild(row);
+            });
+        }
+
+        // Function to sort data
+        function sortData(field) {
+            // Toggle sort order if clicking the same field
+            if (field === currentSortField) {
+                currentSortOrder = currentSortOrder === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSortField = field;
+                currentSortOrder = 'asc';
+            }
+            
+            // Update active button
+            document.getElementById('sort-name').classList.toggle('active', field === 'name');
+            document.getElementById('sort-spots').classList.toggle('active', field === 'available_spots');
+            
+            // Re-fetch data with new sorting
+            fetchData();
+        }
+
+        // Initial data load when page loads
+        document.addEventListener('DOMContentLoaded', fetchData);
+        
+        // Set up auto-refresh every 5 minutes
+        setInterval(fetchData, 5 * 60 * 1000);
+    </script>
+</body>
+</html>
